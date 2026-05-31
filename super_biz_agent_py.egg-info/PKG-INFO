@@ -1,0 +1,43 @@
+Metadata-Version: 2.4
+Name: super-biz-agent-py
+Version: 1.2.1
+Summary: 基于 LangChain 的智能业务代理系统 - 支持 RAG 知识库和 AIOps 智能运维
+Author: chief
+Requires-Python: <3.14,>=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.109.0
+Requires-Dist: uvicorn[standard]>=0.27.0
+Requires-Dist: sse-starlette>=2.1.0
+Requires-Dist: langchain>=0.1.0
+Requires-Dist: langchain-community>=0.0.20
+Requires-Dist: langchain-core>=0.1.0
+Requires-Dist: langchain-openai>=1.0.0
+Requires-Dist: langgraph>=0.0.40
+Requires-Dist: dashscope>=1.14.0
+Requires-Dist: openai>=1.10.0
+Requires-Dist: pymilvus>=2.3.5
+Requires-Dist: pydantic<3.0.0,>=2.5.0
+Requires-Dist: pydantic-settings>=2.1.0
+Requires-Dist: httpx>=0.26.0
+Requires-Dist: aiohttp>=3.9.0
+Requires-Dist: aiofiles>=23.2.0
+Requires-Dist: python-multipart>=0.0.6
+Requires-Dist: loguru>=0.7.2
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: langchain-milvus>=0.3.3
+Requires-Dist: langchain-text-splitters>=1.1.0
+Requires-Dist: langchain-mcp-adapters>=0.2.1
+Requires-Dist: fastmcp>=2.14.0
+Requires-Dist: langchain-qwq>=0.3.4
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.3; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.12.0; extra == "dev"
+Requires-Dist: black>=23.12.0; extra == "dev"
+Requires-Dist: ruff>=0.1.9; extra == "dev"
+Requires-Dist: isort>=5.13.0; extra == "dev"
+Requires-Dist: mypy>=1.8.0; extra == "dev"
+Requires-Dist: pre-commit>=3.6.0; extra == "dev"
+Requires-Dist: ipython>=8.20.0; extra == "dev"
+Requires-Dist: ipdb>=0.13.13; extra == "dev"
