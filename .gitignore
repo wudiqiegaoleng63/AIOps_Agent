@@ -1,5 +1,3 @@
 .venv/
-
-.envsuper_biz_agent_py.egg-info/
-
-.
+.env
+super_biz_agent_py.egg-info/
