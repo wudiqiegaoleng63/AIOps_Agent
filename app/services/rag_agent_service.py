@@ -275,4 +275,99 @@ class RagAgentService:
             yield {"type": "error", "data": detail}
         
         
-        
+    def get_session_history(self, session_id: str) -> list:
+        """
+        获取会话历史（从 MemorySaver checkpointer 中读取）
+
+        Args:
+            session_id: 会话ID（即 thread_id）
+
+        Returns:
+            list: 消息历史列表 [{"role": "user|assistant", "content": "...", "timestamp": "..."}]
+        """
+
+        try:
+            config = {"configurable": {"thread_id": session_id}}
+            
+            # 获取该 thread 的最新检查点
+            checkpoint_tuple = self.checkpointer.get(config)
+            
+            if not checkpoint_tuple:
+                logger.info(f"获取会话历史: {session_id}, 消息数量: 0")
+                return []
+            
+            if hasattr(checkpoint_tuple, 'checkpoint'):
+                checkpoint_data = checkpoint_tuple.checkpoint
+            else:
+                # 如果是普通元组，第一个元素是 checkpoint
+                checkpoint_data = checkpoint_tuple[0] if checkpoint_tuple else {}
+            
+            messages = checkpoint_data.get("channel_values", {}).get("messages", {})
+
+            # 转换为前端需要的格式
+            history = []
+            for msg in messages:
+                # 跳过系统消息
+                if isinstance(msg, SystemMessage):
+                    continue
+                    
+                role = "user" if isinstance(msg, HumanMessage) else "assistant"
+                content = msg.content if hasattr(msg, 'content') else str(msg)
+                
+                # 提取时间戳（如果有的话）
+                timestamp = getattr(msg, 'timestamp', None)
+                if timestamp:
+                    history.append({
+                        "role": role,
+                        "content": content,
+                        "timestamp": timestamp
+                    })
+                else:
+                    from datetime import datetime
+                    history.append({
+                        "role": role,
+                        "content": content,
+                        "timestamp": datetime.now().isoformat()
+                    })
+            
+            logger.info(f"获取会话历史: {session_id}, 消息数量: {len(history)}")
+            return history
+            
+        except Exception as e:
+            logger.error(f"获取会话历史失败: {session_id}, 错误: {e}")
+            return []
+
+
+    def clear_session(self, session_id: str) -> bool:
+        """
+        清空会话历史（从 MemorySaver checkpointer 中删除）
+
+        Args:
+            session_id: 会话ID（即 thread_id）
+
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            # 使用 checkpointer 的 delete_thread 方法删除该 thread 的所有检查点
+            self.checkpointer.delete_thread(session_id)
+            
+            logger.info(f"已清除会话历史: {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"清空会话历史失败: {session_id}, 错误: {e}")
+            return False
+
+    async def cleanup(self):
+        """清理资源"""
+        try:
+            logger.info("清理 RAG Agent 服务资源...")
+            # MCP 客户端由全局管理器统一管理，无需手动清理
+            logger.info("RAG Agent 服务资源已清理")
+        except Exception as e:
+            logger.error(f"清理资源失败: {e}")
+
+
+# 全局单例 - 启用流式输出
+rag_agent_service = RagAgentService(streaming=True)
