@@ -129,7 +129,7 @@ class VectorIndexService:
             normalized_path = path.as_posix()
             vector_store_manager.delete_by_source(normalized_path)
 
-            documents = document_splitter_service.split_text(content, normalized_path)
+            documents = document_splitter_service.split_document(content, normalized_path)
             logger.info(f"文本分割完成: {len(documents)} 个块")
 
             if documents:

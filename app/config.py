@@ -39,11 +39,6 @@ class Settings(BaseSettings):
     openai_flash_model: str = "deepseek-v4-flash"
     openai_model: str = "deepseek-v4-pro"
 
-     # Milvus 配置
-    milvus_host: str = "localhost"
-    milvus_port: int = 19530
-    milvus_timeout: int = 10000  # 毫秒
-
     # RAG 配置
     rag_top_k: int = 3
     rag_model: str = "qwen-max"  # 使用快速响应模型，不带扩展思考

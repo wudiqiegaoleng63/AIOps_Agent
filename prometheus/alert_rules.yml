@@ -1,0 +1,52 @@
+# 模拟告警规则 — 让 AIOps Agent 有告警可以诊断
+# 这些规则基于 Prometheus 自身采集的指标触发告警
+
+groups:
+  - name: aiops_simulated_alerts
+    rules:
+      # 模拟 CPU 高使用率告警（基于 Prometheus 自身的 scrape 持续时间模拟）
+      - alert: HighCPUUsage
+        expr: scrape_duration_seconds > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: demo-app
+          instance: host.docker.internal:9900
+        annotations:
+          summary: "CPU 使用率过高"
+          description: "服务 demo-app 的 CPU 使用率持续偏高，当前实例 {{ $labels.instance }}"
+
+      # 模拟内存高使用率告警
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes > 10000000
+        for: 1m
+        labels:
+          severity: warning
+          service: demo-app
+          instance: host.docker.internal:9900
+        annotations:
+          summary: "内存使用率过高"
+          description: "服务 demo-app 的内存使用持续偏高，当前 RSS: {{ $value }} bytes"
+
+      # 模拟服务响应慢告警
+      - alert: SlowResponse
+        expr: scrape_duration_seconds > 0.01
+        for: 30s
+        labels:
+          severity: info
+          service: demo-api
+          instance: host.docker.internal:9900
+        annotations:
+          summary: "服务响应时间过长"
+          description: "接口响应时间超过阈值，当前采集耗时: {{ $value }}s"
+
+      # 模拟服务不可用告警（当 target 无法采集时自动触发）
+      - alert: ServiceUnavailable
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: unknown
+        annotations:
+          summary: "服务不可用"
+          description: "目标服务 {{ $labels.instance }} 无法访问，Job: {{ $labels.job }}"

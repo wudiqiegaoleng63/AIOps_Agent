@@ -111,11 +111,11 @@ async def index_directory(directory_path: Optional[str] = None):
 
 
 def _sanitize_filename(filename: str) -> str:
-    santized = filename.replace(" ", "_")
+    sanitized = filename.replace(" ", "_")
 
     for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|']:
-        santized = santized.replace(char, "_")
-    return santized
+        sanitized = sanitized.replace(char, "_")
+    return sanitized
 
 def _get_file_extension(filename: str) -> str:
     parts = filename.rsplit(".", 1)

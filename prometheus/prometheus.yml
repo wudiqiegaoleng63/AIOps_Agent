@@ -1,0 +1,35 @@
+# Prometheus 配置文件
+# 采集 MCP 服务和 FastAPI 的指标，并配置模拟告警规则
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# 告警规则文件
+rule_files:
+  - "alert_rules.yml"
+
+# 采集目标
+scrape_configs:
+  # Prometheus 自身
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # CLS MCP 服务
+  - job_name: "cls_mcp"
+    static_configs:
+      - targets: ["host.docker.internal:8003"]
+    metrics_path: "/metrics"
+
+  # Monitor MCP 服务
+  - job_name: "monitor_mcp"
+    static_configs:
+      - targets: ["host.docker.internal:8004"]
+    metrics_path: "/metrics"
+
+  # FastAPI 主服务
+  - job_name: "fastapi"
+    static_configs:
+      - targets: ["host.docker.internal:9900"]
+    metrics_path: "/metrics"

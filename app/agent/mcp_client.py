@@ -16,11 +16,11 @@ _mcp_client: Optional[MultiServerMCPClient] = None
 
 def format_exception_chain(exc: BaseException) -> str:
 
-    sub_exceptins = getattr(exc, "exceptions", None)
+    sub_exceptions = getattr(exc, "exceptions", None)
 
-    if sub_exceptins is not None:
+    if sub_exceptions is not None:
         lines = [str(exc)]
-        for i, sub in enumerate(sub_exceptins):
+        for i, sub in enumerate(sub_exceptions):
             lines.append(f"[{i}] {format_exception_chain(sub)}")
 
         return "\n".join(lines)

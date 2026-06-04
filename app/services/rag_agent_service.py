@@ -42,7 +42,7 @@ def trim_messages_middleware(state: AgentState) -> dict[str, Any] | None:
     logger.debug(f"修剪历史消息 {len(messages)} -> {len(new_message)}")
 
     return {
-        "message" : [
+        "messages" : [
             RemoveMessage(id = REMOVE_ALL_MESSAGES),
             *new_message
 
@@ -172,7 +172,7 @@ class RagAgentService:
                 HumanMessage(content=question)
             ]
 
-            agent_input = {"message": messages}
+            agent_input = {"messages": messages}
 
             config_dict = {
                 "configurable": {
@@ -302,7 +302,7 @@ class RagAgentService:
                 # 如果是普通元组，第一个元素是 checkpoint
                 checkpoint_data = checkpoint_tuple[0] if checkpoint_tuple else {}
             
-            messages = checkpoint_data.get("channel_values", {}).get("messages", {})
+            messages = checkpoint_data.get("channel_values", {}).get("messages", [])
 
             # 转换为前端需要的格式
             history = []
