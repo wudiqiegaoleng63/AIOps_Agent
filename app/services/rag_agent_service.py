@@ -15,6 +15,12 @@ from langchain_openai import ChatOpenAI
 
 from app.config import config
 from app.tools import DEFAULT_LOCAL_AGENT_TOOLS
+from app.agent.mcp_client import (
+    get_mcp_client_with_retry,
+    load_mcp_tools_safe,
+    format_exception_chain,
+    suggest_mcp_transport,
+)
 
 class AgentState(TypedDict):
     """Agent 状态"""
@@ -78,14 +84,36 @@ class RagAgentService:
         
         for name, server in config.mcp_servers.items():
             hint = suggest_mcp_transport(
-
+                str(server.get("url", "")),
+                str(server.get("transport", ""))
             )
-        
 
-        pass
+        mcp_client = await get_mcp_client_with_retry()
+        mcp_tools, mcp_err = await load_mcp_tools_safe(mcp_client)
+            
+        if mcp_err:
+            logger.warning(
+                f"MCP 工具加载失败，将仅使用本地工具继续运行:\n{mcp_err}"
+            )
+            self.mcp_tools = []
+        else:
+            self.mcp_tools = mcp_tools
+            logger.info(f"成功加载 {len(mcp_tools)} 个 MCP 工具")
+
+        all_tools = self.tools + self.mcp_tools
 
 
+        self.agent =  create_agent(
+            self.model,
+            tools=all_tools,
+            checkpointer=self.checkpointer
+        )
 
+        self._agent_initialized = True
+
+        if all_tools:
+            tool_names = [tool.name if hasattr(tool, "name") else str(tool) for tool in all_tools]
+            logger.info(f"可用工具列表: {', '.join(tool_names)}")
 
     def _build_system_prompt(self) -> str:
         """
@@ -134,13 +162,117 @@ class RagAgentService:
         """
           
         try: 
-            await self._initializa_agent()
+            await self._initialize_agent()
 
-            logger.info(f"[会话 {session_id}]")
-        
+            logger.info(f"[会话 {session_id}] RAG Agent 收到查询（非流式）: {question}")
+
+            # 构建消息列表（系统提示 + 用户问题）
+            messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(content=question)
+            ]
+
+            agent_input = {"message": messages}
+
+            config_dict = {
+                "configurable": {
+                    "thread_id": session_id
+                }
+            }
+
+            result = await self.agent.ainvoke(
+                input=agent_input,
+                config=config_dict,
+            )
+            # 提取最终答案
+            messages_result = result.get("messages", [])
+            if messages_result:
+                last_message = messages_result[-1]
+                answer = last_message.content if hasattr(last_message, 'content') else str(last_message)
+
+                # 记录工具调用
+                if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                    tool_names = [tc.get("name", "unknown") for tc in last_message.tool_calls]
+                    logger.info(f"[会话 {session_id}] Agent 调用了工具: {tool_names}")
+
+                logger.info(f"[会话 {session_id}] RAG Agent 查询完成（非流式）")
+                return answer
+
+            logger.warning(f"[会话 {session_id}] Agent 返回结果为空")
+            return ""
         except Exception as e:
                 logger.error(
                     f"[会话 {session_id}] RAG Agent 查询失败（非流式）: "
                     f"{format_exception_chain(e)}"
                 )
                 raise
+    async def query_stream(
+        self,
+        question: str,
+        session_id: str,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        流式处理用户问题（逐步返回答案片段）
+
+        Args:
+            question: 用户问题
+            session_id: 会话ID（作为 thread_id）
+
+        Yields:
+            Dict[str, Any]: 包含流式数据的字典
+                - type: "content" | "tool_call" | "complete" | "error"
+                - data: 具体内容
+        """
+        try:
+            await self._initialize_agent()
+            logger.info(f"[会话 {session_id}] RAG Agent收到流式查询 {question}")
+
+            messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(content=question)
+            ]
+
+            # 构建 Agent 输入
+            agent_input = {"messages": messages}
+
+            # 配置 thread_id（用于会话持久化）
+            config_dict = {
+                "configurable": {
+                    "thread_id": session_id
+                }
+            }
+
+            async for token, metadata in self.agent.astream(
+                input=agent_input,
+                config=config_dict,
+                stream_mode="messages",
+            ):
+                node_name = metadata.get('langgraph_node', 'unknown') if isinstance(metadata, dict) else 'unknown'
+                message_type = type(token).__name__
+
+                if message_type in ("AIMessage", "AIMessageChunk"):
+                    content_blocks = getattr(token, 'content_blocks', None)
+
+                    if content_blocks and isinstance(content_blocks, list):
+                        for block in content_blocks:
+                            if isinstance(block, dict) and block.get('type') == 'text':
+                                text_content = block.get('text', '')
+                                if text_content:
+                                    yield {
+                                        "type": "content",
+                                        "data": text_content,
+                                        "node": node_name
+                                    }
+
+            logger.info(f"[会话 {session_id}] RAG Agent 查询完成（流式）")
+            yield {"type": "complete"}
+
+        except Exception as e:
+            detail = format_exception_chain(e)
+            logger.error(
+                f"[会话 {session_id}] RAG Agent 查询失败（流式）: {detail}"
+            )
+            yield {"type": "error", "data": detail}
+        
+        
+        
