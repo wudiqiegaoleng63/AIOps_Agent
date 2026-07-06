@@ -4,43 +4,15 @@ MCP 客户端管理
 """
 
 import asyncio
-from typing import Optional, Dict, Any, List, Union
-
-from langchain_core.tools import BaseTool
+from typing import Optional, Dict, Any, List
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 from mcp.types import CallToolResult, TextContent
 from loguru import logger
 
+
+# 全局 MCP 客户端（延迟初始化）
 _mcp_client: Optional[MultiServerMCPClient] = None
-
-def format_exception_chain(exc: BaseException) -> str:
-
-    sub_exceptions = getattr(exc, "exceptions", None)
-
-    if sub_exceptions is not None:
-        lines = [str(exc)]
-        for i, sub in enumerate(sub_exceptions):
-            lines.append(f"[{i}] {format_exception_chain(sub)}")
-
-        return "\n".join(lines)
-
-    msg = f"{type(exc).__name__}: {exc}"
-    cause = exc.__cause__ or exc.__context__
-    if cause is not None and cause is not exc:
-        return f"{msg}\n  caused by: {format_exception_chain(cause)}"
-    return msg
-
-
-async def load_mcp_tools_safe(
-        client: MultiServerMCPClient,
-) -> tuple[list[Union[BaseTool, Any]], str | None ]:
-    """加载 MCP 工具；失败时返回空列表与可读错误信息，不向上抛出。"""
-    try:
-        tools = await client.get_tools()
-        return tools, None
-    except BaseException as e:
-        return [], format_exception_chain(e)
 
 
 async def retry_interceptor(
@@ -102,29 +74,7 @@ async def retry_interceptor(
     )
 
 
-def _create_mcp_client(
-    servers: Dict[str, Dict[str, str]],
-    tool_interceptors: Optional[List] = None
-) -> MultiServerMCPClient:
-    """
-    创建 MCP 客户端实例
-    
-    Args:
-        servers: MCP 服务器配置
-        tool_interceptors: 工具拦截器列表
-    
-    Returns:
-        MultiServerMCPClient: 未初始化的客户端实例
-    """
-    # MultiServerMCPClient 的第一个参数直接接收 servers 配置字典
-    # 格式: {server_name: {"transport": "...", "url": "..."}}
-    kwargs: Dict[str, Any] = {}
-    
-    if tool_interceptors:
-        kwargs["tool_interceptors"] = tool_interceptors
-    
-    # 第一个参数是 servers 配置，直接传递
-    return MultiServerMCPClient(servers, **kwargs)  # type: ignore[arg-type]
+# 从配置文件读取 MCP 服务器配置
 from app.config import config
 
 # 使用配置文件中定义的完整 MCP 服务器配置
@@ -206,20 +156,28 @@ async def get_mcp_client_with_retry(
         tool_interceptors=interceptors,
         force_new=force_new
     )
-def suggest_mcp_transport(url: str, transport: str) -> str | None:
-    """URL 与 transport 明显不匹配时给出建议（不自动改写配置）。"""
-    lower_url = url.lower()
-    if "/sse" in lower_url and transport.replace("_", "-") in (
-        "streamable-http",
-        "http",
-    ):
-        return (
-            f"MCP URL 含 /sse/ 但 transport={transport!r}，"
-            "腾讯云等托管端点应使用 transport=sse"
-        )
-    if transport == "sse" and "/mcp" in lower_url and "/sse" not in lower_url:
-        return (
-            f"MCP URL 为本地 FastMCP 路径但 transport={transport!r}，"
-            "本地服务通常应使用 transport=streamable-http"
-        )
-    return None
+
+
+def _create_mcp_client(
+    servers: Dict[str, Dict[str, str]],
+    tool_interceptors: Optional[List] = None
+) -> MultiServerMCPClient:
+    """
+    创建 MCP 客户端实例
+    
+    Args:
+        servers: MCP 服务器配置
+        tool_interceptors: 工具拦截器列表
+    
+    Returns:
+        MultiServerMCPClient: 未初始化的客户端实例
+    """
+    # MultiServerMCPClient 的第一个参数直接接收 servers 配置字典
+    # 格式: {server_name: {"transport": "...", "url": "..."}}
+    kwargs: Dict[str, Any] = {}
+    
+    if tool_interceptors:
+        kwargs["tool_interceptors"] = tool_interceptors
+    
+    # 第一个参数是 servers 配置，直接传递
+    return MultiServerMCPClient(servers, **kwargs)  # type: ignore[arg-type]

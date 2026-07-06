@@ -1,14 +1,15 @@
-"""
-配置文件
+"""配置管理模块
+
+使用 Pydantic Settings 实现类型安全的配置管理
 """
 
 from typing import Dict, Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
-    """
-    配置类
-    """
+    """应用配置"""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -16,28 +17,22 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-     # 应用配置
-    app_name: str = "OpenSreAgent"
+    # 应用配置
+    app_name: str = "SuperBizAgent"
     app_version: str = "1.0.0"
     debug: bool = False
     host: str = "0.0.0.0"
     port: int = 9900
 
-    # Milvus 配置
-    milvus_host: str = "localhost"
-    milvus_port: int = 19530
-    milvus_timeout: int = 10000  # 毫秒
-
-    # QWEN_Model 配置
+    # DashScope 配置
     dashscope_api_key: str = ""  # 默认空字符串，实际使用需从环境变量加载
     dashscope_model: str = "qwen-max"
     dashscope_embedding_model: str = "text-embedding-v4"  # v4 支持多种维度（默认 1024）
 
-    # 兼容Openai model配置
-    openai_api_key: str = ""  # 默认空字符串，实际使用需从环境变量加载
-    openai_base_url: str = "https://qianfan.baidubce.com/v2/coding"
-    openai_flash_model: str = "deepseek-v4-flash"
-    openai_model: str = "deepseek-v4-pro"
+    # Milvus 配置
+    milvus_host: str = "localhost"
+    milvus_port: int = 19530
+    milvus_timeout: int = 10000  # 毫秒
 
     # RAG 配置
     rag_top_k: int = 3
@@ -47,41 +42,59 @@ class Settings(BaseSettings):
     chunk_max_size: int = 800
     chunk_overlap: int = 100
 
-    # MCP 服务配置（transport: stdio | sse | streamable-http）
-    # 腾讯云托管 MCP 的 URL 通常含 /sse/，需使用 sse；本地 FastMCP 使用 streamable-http
+    # MCP 服务配置
+    mcp_cls_enabled: bool = True
     mcp_cls_transport: str = "streamable-http"
     mcp_cls_url: str = "http://localhost:8003/mcp"
+    mcp_monitor_enabled: bool = True
     mcp_monitor_transport: str = "streamable-http"
     mcp_monitor_url: str = "http://localhost:8004/mcp"
+    mcp_ssh_log_transport: str = "streamable-http"
+    mcp_ssh_log_url: str = "http://localhost:8005/mcp"
 
-
-    # Prometheus
-    prometheus_base_url: str = "http://127.0.0.1:9090"
-    prometheus_request_timeout: float = 10.0
-
+    # SSH 日志查询配置
+    ssh_log_enabled: bool = False
+    ssh_log_host: str = ""
+    ssh_log_port: int = 22
+    ssh_log_user: str = "root"
+    ssh_log_password: str = ""
+    ssh_log_key_file: str = ""
+    ssh_log_timeout: int = 15
+    ssh_log_allowed_paths: str = (
+        "/var/log/syslog,"
+        "/var/log/auth.log,"
+        "/var/log/kern.log,"
+        "/var/lib/docker/containers/*/*-json.log"
+    )
 
     @property
     def mcp_servers(self) -> Dict[str, Dict[str, Any]]:
-        """
-        返回 MCP 服务器配置
-        """
-        return {
-            "cls": {
+        """获取完整的 MCP 服务器配置"""
+        servers = {}
+        if self.mcp_cls_enabled:
+            servers["cls"] = {
                 "transport": self.mcp_cls_transport,
                 "url": self.mcp_cls_url,
-            },
-            "monitor": {
+            }
+        if self.mcp_monitor_enabled:
+            servers["monitor"] = {
                 "transport": self.mcp_monitor_transport,
                 "url": self.mcp_monitor_url,
-            },
-        }
-    
+            }
+        if self.ssh_log_enabled:
+            if self.mcp_ssh_log_transport == "stdio":
+                servers["ssh_log"] = {
+                    "transport": "stdio",
+                    "command": ".venv\\Scripts\\python.exe",
+                    "args": ["mcp_servers/ssh_log_server.py", "--stdio"],
+                }
+            else:
+                servers["ssh_log"] = {
+                    "transport": self.mcp_ssh_log_transport,
+                    "url": self.mcp_ssh_log_url,
+                }
+        return servers
 
+
+# 全局配置实例
 config = Settings()
-
-
-
-
-
-
-

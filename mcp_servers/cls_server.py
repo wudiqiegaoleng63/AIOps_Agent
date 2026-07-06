@@ -10,19 +10,18 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from fastmcp import FastMCP
 
+# 配置日志
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-
 logger = logging.getLogger("CLS_MCP_Server")
 
 mcp = FastMCP("CLS")
 
 
 def log_tool_call(func):
-    """装饰器： 记录工具调用的日志"""
-
+    """装饰器：记录工具调用的日志，包括方法名、参数和返回状态"""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         method_name = func.__name__
@@ -42,6 +41,7 @@ def log_tool_call(func):
         else:
             logger.info("参数信息: 无")
 
+        # 执行方法
         try:
             result = func(*args, **kwargs)
 
@@ -67,6 +67,7 @@ def log_tool_call(func):
             raise
 
     return wrapper
+
 
 def parse_time_or_default(time_str: Optional[str], default_offset_hours: int = 0) -> datetime:
     """解析时间字符串或返回默认时间。
@@ -99,6 +100,7 @@ def generate_time_series(base_time: datetime, minutes_offset: int) -> str:
     result_time = base_time + timedelta(minutes=minutes_offset)
     return result_time.strftime("%Y-%m-%d %H:%M:%S")
 
+
 @mcp.tool()
 @log_tool_call
 def get_current_timestamp() -> int:
@@ -129,6 +131,7 @@ def get_current_timestamp() -> int:
         )
     """
     return int(datetime.now().timestamp() * 1000)
+
 
 @mcp.tool()
 @log_tool_call
@@ -204,6 +207,7 @@ def get_topic_info_by_name(topic_name: str, region_code: Optional[str] = None) -
         "region_code": region_code,
         "error": f"未找到主题: {topic_name}"
     }
+
 
 @mcp.tool()
 @log_tool_call
@@ -337,6 +341,7 @@ def search_topic_by_service_name(
         },
         "message": f"找到 {len(matched_topics)} 个匹配的日志主题" if matched_topics else f"未找到服务 '{service_name}' 的日志主题"
     }
+
 
 @mcp.tool()
 @log_tool_call

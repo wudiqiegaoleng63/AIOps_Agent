@@ -1,4 +1,5 @@
-"""向量嵌入服务"""
+"""向量嵌入服务模块 - 基于 LangChain Embeddings 标准接口"""
+
 from typing import List
 
 from langchain_core.embeddings import Embeddings
@@ -6,25 +7,46 @@ from openai import OpenAI
 from loguru import logger
 
 from app.config import config
+
+
 class DashScopeEmbeddings(Embeddings):
+    """阿里云 DashScope Text Embedding (OpenAI 兼容模式)
+    
+    实现 LangChain 标准 Embeddings 接口:
+    - embed_documents(texts: List[str]) → List[List[float]]: 批量嵌入文档
+    - embed_query(text: str) → List[float]: 嵌入单个查询
+    """
+
     def __init__(
         self,
         api_key: str,
         model: str = "text-embedding-v4",
         dimensions: int = 1024,
     ):
-        if not api_key or api_key == "your_openai_api_key":
-            raise ValueError("请提供有效的 OpenAI API Key")
+        """
+        初始化 DashScope Embeddings
         
-        self.client = OpenAI(api_key=api_key,
-                             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
-                            )
+        Args:
+            api_key: DashScope API Key
+            model: 嵌入模型名称
+            dimensions: 向量维度
+        """
+        if not api_key or api_key == "your-api-key-here":
+            raise ValueError("请设置环境变量 DASHSCOPE_API_KEY")
         
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
         self.model = model
         self.dimensions = dimensions
-
+        
+        # 打印初始化信息
         masked_key = self._mask_api_key(api_key)
-        logger.info(f"✅ DashScopeEmbeddings 初始化成功，使用模型: {model}, API Key: {masked_key}")
+        logger.info(
+            f"DashScope Embeddings 初始化完成 - "
+            f"模型: {model}, 维度: {dimensions}, API Key: {masked_key}"
+        )
 
     @staticmethod
     def _mask_api_key(api_key: str) -> str:
@@ -32,6 +54,7 @@ class DashScopeEmbeddings(Embeddings):
         if len(api_key) > 8:
             return f"{api_key[:8]}...{api_key[-4:]}"
         return "***"
+
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """
         批量嵌入文档列表 (LangChain 标准接口)
@@ -64,7 +87,6 @@ class DashScopeEmbeddings(Embeddings):
         except Exception as e:
             logger.error(f"批量嵌入失败: {e}")
             raise RuntimeError(f"批量嵌入失败: {e}") from e
-
 
     def embed_query(self, text: str) -> List[float]:
         """
@@ -105,8 +127,3 @@ vector_embedding_service = DashScopeEmbeddings(
     model=config.dashscope_embedding_model,
     dimensions=1024
 )
-
-
-
-
-

@@ -1,3 +1,4 @@
+"""向量存储管理器 - 封装 Milvus VectorStore 操作"""
 
 from typing import List
 
@@ -10,15 +11,19 @@ from app.core.milvus_client import milvus_manager
 from app.services.vector_embedding_service import vector_embedding_service
 
 
+# 统一使用 biz collection
 COLLECTION_NAME = "biz"
 
+
 class VectorStoreManager:
+    """向量存储管理器"""
 
     def __init__(self):
-        self.vector_store = None    
+        """初始化向量存储管理器"""
+        self.vector_store = None
         self.collection_name = COLLECTION_NAME
         self._initialize_vector_store()
-    
+
     def _initialize_vector_store(self):
         """初始化 Milvus VectorStore"""
         try:
@@ -146,17 +151,3 @@ class VectorStoreManager:
 
 # 全局单例
 vector_store_manager = VectorStoreManager()
-
-
-
-
-
-
-
-
-
-
-
-
-
-

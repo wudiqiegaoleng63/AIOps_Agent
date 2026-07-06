@@ -1,12 +1,18 @@
-"""向量索引服务"""
+"""向量索引服务模块"""
+
 from datetime import datetime
-from typing import Dict, Optional, Any
-from loguru import logger
 from pathlib import Path
-from app.services.vector_store_manager import vector_store_manager
+from typing import Any, Dict, Optional
+
+from loguru import logger
+
 from app.services.document_splitter_service import document_splitter_service
+from app.services.vector_store_manager import vector_store_manager
+
+
 class IndexingResult:
-    """索引结果"""
+    """索引结果类"""
+
     def __init__(self):
         self.success = False
         self.directory_path = ""
@@ -17,7 +23,7 @@ class IndexingResult:
         self.end_time: Optional[datetime] = None
         self.error_message = ""
         self.failed_files: Dict[str, str] = {}
-    
+
     def increment_success_count(self):
         """增加成功计数"""
         self.success_count += 1
@@ -46,16 +52,28 @@ class IndexingResult:
             "fail_count": self.fail_count,
             "duration_ms": self.get_duration_ms(),
             "error_message": self.error_message,
-            "failed_files": self.failed_files
+            "failed_files": self.failed_files,
         }
 
+
 class VectorIndexService:
+    """向量索引服务 - 负责读取文件、生成向量、存储到 Milvus"""
 
     def __init__(self):
+        """初始化向量索引服务"""
         self.upload_path = "./uploads"
-        logger.info("📁 VectorIndexService 初始化完成")
-    
-    def index_directory(self, directory_path: Optional[str]) -> IndexingResult:
+        logger.info("向量索引服务初始化完成")
+
+    def index_directory(self, directory_path: Optional[str] = None) -> IndexingResult:
+        """
+        索引指定目录下的所有文件
+
+        Args:
+            directory_path: 目录路径（可选，默认使用配置的上传目录）
+
+        Returns:
+            IndexingResult: 索引结果
+        """
         result = IndexingResult()
         result.start_time = datetime.now()
 
@@ -109,38 +127,49 @@ class VectorIndexService:
             result.error_message = str(e)
             result.end_time = datetime.now()
             return result
-    def index_single_file(self, file_path: str):
-        """索引单个文件的内容到 Milvus"""
-        # 这里应该包含实际的文件读取和向量化逻辑
-        # 例如：
-        # 1. 读取文件内容
-        # 2. 使用文本分割器将内容分块
-        # 3. 将每个块转换为向量
-        # 4. 将向量存储到 Milvus 中
-        path = Path(file_path).resolve()
-        if not path.exists() or not path.is_file():
-            raise ValueError(f"文件不存在或不是有效文件: {file_path}")
-        # 模拟索引过程
-        logger.debug(f"正在索引文件: {path}")        
-        try:
-            content = path.read_text(encoding="utf-8")
-            logger.info(f"文件内容长度: {len(content)} 字符")
 
+    def index_single_file(self, file_path: str):
+        """
+        索引单个文件 (使用新的 LangChain 分割器)
+
+        Args:
+            file_path: 文件路径
+
+        Raises:
+            ValueError: 文件不存在时抛出
+            RuntimeError: 索引失败时抛出
+        """
+        path = Path(file_path).resolve()
+
+        if not path.exists() or not path.is_file():
+            raise ValueError(f"文件不存在: {file_path}")
+
+        logger.info(f"开始索引文件: {path}")
+
+        try:
+            # 1. 读取文件内容
+            content = path.read_text(encoding="utf-8")
+            logger.info(f"读取文件: {path}, 内容长度: {len(content)} 字符")
+
+            # 2. 删除该文件的旧数据（如果存在）
             normalized_path = path.as_posix()
             vector_store_manager.delete_by_source(normalized_path)
 
+            # 3. 使用新的文档分割器
             documents = document_splitter_service.split_document(content, normalized_path)
-            logger.info(f"文本分割完成: {len(documents)} 个块")
+            logger.info(f"文档分割完成: {file_path} -> {len(documents)} 个分片")
 
+            # 4. 添加文档到向量存储
             if documents:
                 vector_store_manager.add_documents(documents)
-                logger.info(f"向量存储完成: {len(documents)} 个向量")
+                logger.info(f"文件索引完成: {file_path}, 共 {len(documents)} 个分片")
             else:
-                logger.warning(f"没有生成任何文档块，文件可能过小或内容不适合分割: {file_path}")
-
+                logger.warning(f"文件内容为空或无法分割: {file_path}")
 
         except Exception as e:
-            logger.error(f"读取文件失败: {file_path}, 错误: {e}")
-            raise RuntimeError(f"读取文件失败: {e}") from e
+            logger.error(f"索引文件失败: {file_path}, 错误: {e}")
+            raise RuntimeError(f"索引文件失败: {e}") from e
 
+
+# 全局单例
 vector_index_service = VectorIndexService()

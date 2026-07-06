@@ -1,16 +1,20 @@
+"""Milvus 客户端工厂模块"""
+
 from loguru import logger
 from pymilvus import (
     Collection,
     CollectionSchema,
-    FieldSchema,
     DataType,
+    FieldSchema,
+    MilvusClient,
     connections,
     utility,
     MilvusException,
-    MilvusClient
 )
+
 from app.config import config
-#匹配
+
+
 def _patch_pymilvus_milvus_client_orm_alias() -> None:
     """
     langchain_milvus 内部创建的 MilvusClient 会将 _using 设为 ``cm-{id}``，
@@ -37,8 +41,8 @@ def _patch_pymilvus_milvus_client_orm_alias() -> None:
     setattr(_patch_pymilvus_milvus_client_orm_alias, "_done", True)
 
 
-
 class MilvusClientManager:
+    """Milvus 客户端管理器"""
 
     # 常量定义
     COLLECTION_NAME: str = "biz"
@@ -46,47 +50,56 @@ class MilvusClientManager:
     ID_MAX_LENGTH: int = 100
     CONTENT_MAX_LENGTH: int = 8000
     DEFAULT_SHARD_NUMBER: int = 2
+
     def __init__(self) -> None:
         """初始化 Milvus 客户端管理器"""
         self._client: MilvusClient | None = None
         self._collection: Collection | None = None
-    
-    def connect(self) -> MilvusClient:
-        """连接到 Milvus 服务器并初始化 Collection"""
-        if self._collection is not None and self._client is not None:
-            logger.debug("Milvus 已经连接，重复连接将被忽略")
-            return self._client
-        try:
 
+    def connect(self) -> MilvusClient:
+        """
+        连接到 Milvus 服务器并初始化 collection
+
+        Returns:
+            MilvusClient: Milvus 客户端实例
+
+        Raises:
+            RuntimeError: 连接或初始化失败时抛出
+        """
+        # 幂等：导入阶段可能已由 VectorStoreManager 等提前连接，避免重复初始化
+        if self._collection is not None and self._client is not None:
+            logger.debug("Milvus 已连接，跳过重复 connect")
+            return self._client
+
+        try:
             _patch_pymilvus_milvus_client_orm_alias()
 
-            logger.info("正在连接 Milvus 服务器: {config.milvus_host}:{config.milvus_port}")
+            logger.info(f"正在连接到 Milvus: {config.milvus_host}:{config.milvus_port}")
 
-            # 连接 Milvus 服务器
+            # 建立连接
             connections.connect(
-                alias = "default",
-                host = config.milvus_host,
-                port = str(config.milvus_port),
-                timeout = config.milvus_timeout / 1000  # 转换为秒
+                alias="default",
+                host=config.milvus_host,
+                port=str(config.milvus_port),
+                timeout=config.milvus_timeout / 1000,  # 转换为秒
             )
 
-            #创建客户端
+            # 创建客户端
             uri = f"http://{config.milvus_host}:{config.milvus_port}"
             self._client = MilvusClient(uri=uri)
 
-            logger.info("Milvus 连接成功")
+            logger.info("成功连接到 Milvus")
 
-            # 初始化 Collection
+            # 检查并创建 collection
             if not self._collection_exists():
                 logger.info(f"collection '{self.COLLECTION_NAME}' 不存在，正在创建...")
                 self._create_collection()
                 logger.info(f"成功创建 collection '{self.COLLECTION_NAME}'")
-
             else:
                 logger.info(f"collection '{self.COLLECTION_NAME}' 已存在")
                 self._collection = Collection(self.COLLECTION_NAME)
-
-                #检查向量维度是否匹配
+                
+                # 检查向量维度是否匹配
                 schema = self._collection.schema
                 vector_field = None
                 existing_dim = None
@@ -94,9 +107,9 @@ class MilvusClientManager:
                     if field.name == "vector":
                         vector_field = field
                         break
-
-                if vector_field and hasattr(vector_field, "params") and 'dim' in vector_field.params:
-                    existing_dim = vector_field.params["dim"]
+                
+                if vector_field and hasattr(vector_field, 'params') and 'dim' in vector_field.params:
+                    existing_dim = vector_field.params['dim']
                     if existing_dim != self.VECTOR_DIM:
                         logger.warning(
                             f"检测到向量维度不匹配！当前 collection 维度: {existing_dim}, 配置维度: {self.VECTOR_DIM}"
@@ -107,13 +120,13 @@ class MilvusClientManager:
                         self._create_collection()
                         logger.info(f"成功重新创建 collection，维度: {self.VECTOR_DIM}")
                     else:
-                        logger.info(f"collection '{self.VECTOR_DIM}' 维度匹配")
+                        logger.info(f"向量维度匹配: {self.VECTOR_DIM}")
 
-
-            #加载 collection        
+            # 加载 collection
             self._load_collection()
-                
+
             return self._client
+
         except MilvusException as e:
             logger.error(f"Milvus 操作失败: {e}")
             self.close()
@@ -128,10 +141,11 @@ class MilvusClientManager:
             raise RuntimeError(f"连接 Milvus 失败: {e}") from e
 
     def _collection_exists(self) -> bool:
-        """检查 Collection 是否存在"""
+        """检查 collection 是否存在"""
+        # pymilvus 的类型标注可能不准确，实际返回 bool
         result = utility.has_collection(self.COLLECTION_NAME)
-        return bool(result)
-    
+        return bool(result)  # type: ignore[arg-type]
+
     def _create_collection(self) -> None:
         """创建 biz collection"""
         # 定义字段
@@ -176,20 +190,22 @@ class MilvusClientManager:
         self._create_index()
 
     def _create_index(self) -> None:
-        """为向量字段创建索引"""
+        """为 vector 字段创建索引"""
         if self._collection is None:
-            raise RuntimeError("Collection 未初始化，无法创建索引")
+            raise RuntimeError("Collection 未初始化")
 
         index_params = {
+            "metric_type": "L2",  # 欧氏距离
             "index_type": "IVF_FLAT",
-            "metric_type": "L2",
             "params": {"nlist": 128},
         }
+
         _ = self._collection.create_index(
             field_name="vector",
             index_params=index_params,
         )
-        logger.info("成功为 'vector' 字段创建索引")
+
+        logger.info("成功为 vector 字段创建索引")
 
     def _load_collection(self) -> None:
         """加载 collection 到内存"""
@@ -236,8 +252,13 @@ class MilvusClientManager:
             raise RuntimeError("Collection 未初始化，请先调用 connect()")
         return self._collection
 
-    def health_check(self):
-        """检查 Milvus 服务健康状态"""
+    def health_check(self) -> bool:
+        """
+        健康检查
+
+        Returns:
+            bool: True 表示健康，False 表示异常
+        """
         try:
             if self._client is None:
                 return False
@@ -277,7 +298,7 @@ class MilvusClientManager:
             logger.error(f"关闭 Milvus 连接时出现错误: {error_msg}")
         else:
             logger.info("已关闭 Milvus 连接")
-    
+
     def __enter__(self) -> "MilvusClientManager":
         """上下文管理器入口"""
         _ = self.connect()

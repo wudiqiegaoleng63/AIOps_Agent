@@ -8,18 +8,33 @@ from fastapi import APIRouter, HTTPException
 from sse_starlette.sse import EventSourceResponse
 from app.models.request import ChatRequest, ClearRequest
 from app.models.response import SessionInfoResponse, ApiResponse
-from app.agent.mcp_client import format_exception_chain
 from app.services.rag_agent_service import rag_agent_service
 from loguru import logger
 
 router = APIRouter()
 
+
 @router.post("/chat")
 async def chat(request: ChatRequest):
+    """快速对话接口
+    {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "success": true,
+            "answer": "回答内容",
+            "errorMessage": null
+        }
+    }
 
+    Args:
+        request: 对话请求
+
+    Returns:
+        统一格式的对话响应
+    """
     try:
         logger.info(f"[会话 {request.id}] 收到快速对话请求: {request.question}")
-
         answer = await rag_agent_service.query(
             request.question,
             session_id=request.id
@@ -37,8 +52,6 @@ async def chat(request: ChatRequest):
             }
         }
 
-
-
     except Exception as e:
         logger.error(f"对话接口错误: {e}")
         return {
@@ -50,11 +63,32 @@ async def chat(request: ChatRequest):
                 "errorMessage": str(e)
             }
         }
-    
 
-#流式对话
+
 @router.post("/chat_stream")
 async def chat_stream(request: ChatRequest):
+    """流式对话接口（基于 RAG Agent，SSE）
+
+    返回 SSE 格式，data 字段为 JSON：
+
+    工具调用事件:
+    event: message
+    data: {"type":"tool_call","data":{"tool":"工具名","status":"start|end","input":{...}}}
+
+    内容流式事件:
+    event: message
+    data: {"type":"content","data":"内容块"}
+
+    完成事件:
+    event: message
+    data: {"type":"done","data":{"answer":"完整答案","tool_calls":[...]}}
+
+    Args:
+        request: 对话请求
+
+    Returns:
+        SSE 事件流
+    """
     logger.info(f"[会话 {request.id}] 收到流式对话请求: {request.question}")
 
     async def event_generator():
@@ -123,7 +157,7 @@ async def chat_stream(request: ChatRequest):
             logger.info(f"[会话 {request.id}] 流式对话完成")
 
         except Exception as e:
-            logger.error(f"流式对话接口错误: {format_exception_chain(e)}")
+            logger.error(f"流式对话接口错误: {e}")
             yield {
                 "event": "message",
                 "data": json.dumps({
@@ -133,7 +167,6 @@ async def chat_stream(request: ChatRequest):
             }
 
     return EventSourceResponse(event_generator())
-
 
 
 @router.post("/chat/clear", response_model=ApiResponse)
@@ -159,7 +192,7 @@ async def clear_session(request: ClearRequest):
     except Exception as e:
         logger.error(f"清空会话错误: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
 
 @router.get("/chat/session/{session_id}", response_model=SessionInfoResponse)
 async def get_session_info(session_id: str) -> SessionInfoResponse:
@@ -183,6 +216,3 @@ async def get_session_info(session_id: str) -> SessionInfoResponse:
     except Exception as e:
         logger.error(f"获取会话信息错误: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-

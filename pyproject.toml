@@ -30,6 +30,7 @@ dependencies = [
     "langchain-mcp-adapters>=0.2.1",
     "fastmcp>=2.14.0",
     "langchain-qwq>=0.3.4",
+    "paramiko>=3.4.0",
 ]
 
 [project.optional-dependencies]

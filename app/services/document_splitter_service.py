@@ -1,3 +1,5 @@
+"""文档分割服务模块 - 基于 LangChain 的智能文档分割"""
+
 from pathlib import Path
 from typing import List
 
@@ -7,12 +9,16 @@ from loguru import logger
 
 from app.config import config
 
+
 class DocumentSplitterService:
+    """文档分割服务 - 使用 LangChain 的分割器"""
 
     def __init__(self):
+        """初始化文档分割服务"""
         self.chunk_size = config.chunk_max_size
         self.chunk_overlap = config.chunk_overlap
 
+        # Markdown 标题分割器 (只按一级和二级标题分割，减少分片数)
         self.markdown_splitter = MarkdownHeaderTextSplitter(
             headers_to_split_on=[
                 ("#", "h1"),
@@ -22,6 +28,7 @@ class DocumentSplitterService:
             strip_headers=False,  # 保留标题在内容中
         )
 
+        # 递归字符分割器 (用于二次分割，使用更大的chunk_size)
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size * 2,  # 加倍chunk_size，减少分片数
             chunk_overlap=self.chunk_overlap,
@@ -35,47 +42,31 @@ class DocumentSplitterService:
             f"overlap={self.chunk_overlap}"
         )
 
-    def _merge_small_chunks(
-            self,
-            documents: List[Document],
-            min_size: int = 300
-    ) -> List[Document]:
-        if not documents:
-            return []
-        
-        merged_docs = []
-        current_doc = None
+    def split_markdown(self, content: str, file_path: str = "") -> List[Document]:
+        """
+        分割 Markdown 文档 (两阶段分割 + 合并小片段)
 
-        for doc in documents:
-            doc_size = len(doc.page_content)
+        Args:
+            content: Markdown 内容
+            file_path: 文件路径 (用于元数据)
 
-            if current_doc is None:
-                current_doc = doc
-            elif doc_size < min_size and len(current_doc.page_content) <= self.chunk_size * 2:
-                current_doc.page_content += "\n\n" + doc.page_content
-            else:
-                merged_docs.append(current_doc)
-                current_doc = doc
-            
-        if current_doc:
-            merged_docs.append(current_doc)
-        return merged_docs     
-
-    def split_markdown(self,
-                       content: str,
-                       file_path: str = ""
-                       ):
-        """使用 MarkdownHeaderTextSplitter 分割 Markdown 文档"""
-
+        Returns:
+            List[Document]: 文档分片列表
+        """
         if not content or not content.strip():
-            logger.warning(f"空内容无法分割: {file_path}")
+            logger.warning(f"Markdown 文档内容为空: {file_path}")
             return []
+
         try:
+            # 第一阶段: 按标题分割
             md_docs = self.markdown_splitter.split_text(content)
 
+            # 第二阶段: 按大小进一步分割
             docs_after_split = self.text_splitter.split_documents(md_docs)
 
-            final_docs = self._merge_small_chunks(docs_after_split)
+            # 第三阶段: 合并太小的分片 (< 300字符)
+            final_docs = self._merge_small_chunks(docs_after_split, min_size=300)
+
             # 添加文件路径元数据
             for doc in final_docs:
                 doc.metadata["_source"] = file_path
@@ -84,11 +75,22 @@ class DocumentSplitterService:
 
             logger.info(f"Markdown 分割完成: {file_path} -> {len(final_docs)} 个分片")
             return final_docs
+
         except Exception as e:
             logger.error(f"Markdown 分割失败: {file_path}, 错误: {e}")
             raise
 
     def split_text(self, content: str, file_path: str = "") -> List[Document]:
+        """
+        分割普通文本文档
+
+        Args:
+            content: 文本内容
+            file_path: 文件路径 (用于元数据)
+
+        Returns:
+            List[Document]: 文档分片列表
+        """
         if not content or not content.strip():
             logger.warning(f"文本文档内容为空: {file_path}")
             return []
@@ -128,6 +130,47 @@ class DocumentSplitterService:
             return self.split_markdown(content, file_path)
         else:
             return self.split_text(content, file_path)
-        
+
+    def _merge_small_chunks(
+        self, documents: List[Document], min_size: int = 300
+    ) -> List[Document]:
+        """
+        合并太小的分片
+
+        Args:
+            documents: 文档列表
+            min_size: 最小分片大小 (字符数)
+
+        Returns:
+            List[Document]: 合并后的文档列表
+        """
+        if not documents:
+            return []
+
+        merged_docs = []
+        current_doc = None
+
+        for doc in documents:
+            doc_size = len(doc.page_content)
+
+            if current_doc is None:
+                # 第一个文档
+                current_doc = doc
+            elif doc_size < min_size and len(current_doc.page_content) < self.chunk_size * 2:
+                # 当前文档太小且合并后不会太大，则合并
+                current_doc.page_content += "\n\n" + doc.page_content
+                # 保留主文档的元数据
+            else:
+                # 保存当前文档，开始新文档
+                merged_docs.append(current_doc)
+                current_doc = doc
+
+        # 添加最后一个文档
+        if current_doc is not None:
+            merged_docs.append(current_doc)
+
+        return merged_docs
+
+
 # 全局单例
 document_splitter_service = DocumentSplitterService()

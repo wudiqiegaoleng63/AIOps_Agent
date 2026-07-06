@@ -114,6 +114,13 @@ def generate_time_series(base_time: datetime, minutes_offset: int, format_str: s
     return result_time.strftime(format_str)
 
 
+
+
+
+# ============================================================
+# 监控数据查询工具
+# ============================================================
+
 @mcp.tool()
 @log_tool_call
 def query_cpu_metrics(
@@ -229,41 +236,43 @@ def query_cpu_metrics(
         current_time += timedelta(minutes=interval_minutes)
         time_index += 1
 
+    # 计算统计信息
     if data_points:
-            values = [d["value"] for d in data_points]
-            avg_value = round(sum(values) / len(values), 2)
-            max_value = max(values)
-            min_value = min(values)
+        values = [d["value"] for d in data_points]
+        avg_value = round(sum(values) / len(values), 2)
+        max_value = max(values)
+        min_value = min(values)
 
-            # 检测是否有 CPU 突增（超过 80%）
-            spike_detected = max_value > 80.0
+        # 检测是否有 CPU 突增（超过 80%）
+        spike_detected = max_value > 80.0
 
-            return {
-                "service_name": service_name,
-                "metric_name": "cpu_usage_percent",
-                "interval": interval,
-                "data_points": data_points,
-                "statistics": {
-                    "avg": avg_value,
-                    "max": max_value,
-                    "min": min_value,
-                    "p95": round(sorted(values)[int(len(values) * 0.95)] if len(values) > 1 else max_value, 2),
-                    "spike_detected": spike_detected
-                },
-                "alert_info": {
-                    "triggered": spike_detected,
-                    "threshold": 80.0,
-                    "message": "CPU 使用率持续超过 80% 阈值" if spike_detected else "CPU 使用率正常"
-                }
+        return {
+            "service_name": service_name,
+            "metric_name": "cpu_usage_percent",
+            "interval": interval,
+            "data_points": data_points,
+            "statistics": {
+                "avg": avg_value,
+                "max": max_value,
+                "min": min_value,
+                "p95": round(sorted(values)[int(len(values) * 0.95)] if len(values) > 1 else max_value, 2),
+                "spike_detected": spike_detected
+            },
+            "alert_info": {
+                "triggered": spike_detected,
+                "threshold": 80.0,
+                "message": "CPU 使用率持续超过 80% 阈值" if spike_detected else "CPU 使用率正常"
             }
+        }
     else:
         return {
-                "service_name": service_name,
-                "metric_name": "cpu_usage_percent",
-                "interval": interval,
-                "data_points": [],
-                "statistics": {},
-            }
+            "service_name": service_name,
+            "metric_name": "cpu_usage_percent",
+            "interval": interval,
+            "data_points": [],
+            "statistics": {},
+        }
+
 
 @mcp.tool()
 @log_tool_call
@@ -424,6 +433,3 @@ def query_memory_metrics(
 if __name__ == "__main__":
     # 使用 streamable-http 模式，运行在 8004 端口
     mcp.run(transport="streamable-http", host="127.0.0.1", port=8004, path="/mcp")
-
-
-

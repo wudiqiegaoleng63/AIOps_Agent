@@ -1,23 +1,32 @@
-from fastapi import APIRouter
-from app.config import config
+"""健康检查接口"""
+
 from typing import Any
-from app.core.milvus_client import milvus_manager
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from app.config import config
+from app.core.milvus_client import milvus_manager
 from loguru import logger
 
 router = APIRouter()
 
+
 @router.get("/health")
 async def health_check():
-    """健康检查接口"""
     
-    health_data: dict[str, Any] = {
+    """健康检查接口
+    检查服务状态和数据库连接状态
+    
+    Returns:
+        JSONResponse: 健康检查结果
+    """
+    # 检查服务基本状态
+    health_data: dict[str, Any] = {  # pyright: ignore[reportExplicitAny]
         "service": config.app_name,
         "version": config.app_version,
         "status": "healthy"
     }
-
-    #检查 Milvus 连接状态
+    
+    # 检查 Milvus 连接状态
     try:
         milvus_healthy = milvus_manager.health_check()
         milvus_status: str = "connected" if milvus_healthy else "disconnected"
@@ -53,6 +62,3 @@ async def health_check():
             "data": health_data
         }
     )
-
-
-
